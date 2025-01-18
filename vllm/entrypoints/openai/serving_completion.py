@@ -324,30 +324,38 @@ class OpenAIServingCompletion(OpenAIServing):
                     finish_reason = output.finish_reason
                     stop_reason = output.stop_reason
 
-                    chunk = CompletionStreamResponse(
-                        id=request_id,
-                        created=created_time,
-                        model=model_name,
-                        choices=[
-                            CompletionResponseStreamChoice(
-                                index=i,
-                                text=delta_text,
-                                logprobs=logprobs,
-                                finish_reason=finish_reason,
-                                stop_reason=stop_reason,
-                            )
-                        ])
-                    if include_continuous_usage:
-                        prompt_tokens = num_prompt_tokens[prompt_idx]
-                        completion_tokens = previous_num_tokens[i]
-                        chunk.usage = UsageInfo(
-                            prompt_tokens=prompt_tokens,
-                            completion_tokens=completion_tokens,
-                            total_tokens=prompt_tokens + completion_tokens,
+                    for token_index in range(len(logprobs.tokens)):
+                        chunk = CompletionStreamResponse(
+                            id=request_id,
+                            created=created_time,
+                            model=model_name,
+                            choices=[
+                                CompletionResponseStreamChoice(
+                                    index=i,
+                                    text=logprobs.tokens[token_index],
+                                    logprobs=CompletionLogProbs(
+                                        text_offset=[logprobs.text_offset[token_index]],
+                                        token_logprobs=[logprobs.token_logprobs[token_index]],
+                                        tokens=[logprobs.tokens[token_index]],
+                                        top_logprobs=[logprobs.top_logprobs[token_index]]
+                                    ),
+                                    finish_reason=finish_reason,
+                                    stop_reason=stop_reason,
+                                )
+                            ]
                         )
 
-                    response_json = chunk.model_dump_json(exclude_unset=False)
-                    yield f"data: {response_json}\n\n"
+                        if include_continuous_usage:
+                            prompt_tokens = num_prompt_tokens[prompt_idx]
+                            completion_tokens = previous_num_tokens[i]
+                            chunk.usage = UsageInfo(
+                                prompt_tokens=prompt_tokens,
+                                completion_tokens=completion_tokens,
+                                total_tokens=prompt_tokens + completion_tokens,
+                            )
+
+                        response_json = chunk.model_dump_json(exclude_unset=False)
+                        yield f"data: {response_json}\n\n"
 
             total_prompt_tokens = sum(num_prompt_tokens)
             total_completion_tokens = sum(previous_num_tokens)
